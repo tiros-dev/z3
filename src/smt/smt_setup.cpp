@@ -26,6 +26,7 @@ Revision History:
 #include "smt/theory_utvpi.h"
 #include "smt/theory_array.h"
 #include "smt/theory_array_full.h"
+#include "smt/theory_automata.h"
 #include "smt/theory_bv.h"
 #include "smt/theory_datatype.h"
 #include "smt/theory_dummy.h"
@@ -857,6 +858,9 @@ namespace smt {
         else if (m_params.m_string_solver == "seq") {
             setup_seq();
         } 
+        else if (m_params.m_string_solver == "automata") {
+            setup_automata();
+        }
         else if (m_params.m_string_solver == "auto") {
             if (st.m_has_seq_non_str) {
                 setup_seq();
@@ -886,6 +890,11 @@ namespace smt {
 
     void setup::setup_seq() {
         m_context.register_plugin(alloc(smt::theory_seq, m_manager));
+    }
+
+    void setup::setup_automata() {
+        TRACE("setup", tout << "setup_automata" << std::endl;);
+        m_context.register_plugin(alloc(smt::theory_automata, m_manager));
     }
 
     void setup::setup_unknown() {
