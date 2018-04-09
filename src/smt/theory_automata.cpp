@@ -283,7 +283,7 @@ private:
     const nfa& _nfa;
 
     unsigned garbage_state() {
-        if (_garbage_state == UINT_MAX) {
+        if (_garbage_state == std::numeric_limits<unsigned>::max()) {
             _garbage_state = next_dfa_state();
             _dfa_transitions[_garbage_state] = std::vector<dfa::transition>(1, { _garbage_state, 0, alphabet_size });
         }
@@ -312,7 +312,7 @@ private:
     }
 
 public:
-    dfa_builder(const nfa& n) : _garbage_state(UINT_MAX), _nfa(n) { };
+    dfa_builder(const nfa& n) : _garbage_state(std::numeric_limits<unsigned>::max()), _nfa(n) { };
 
     dfa get_dfa() {
         std::stack<std::set<unsigned>> nfa_state_sets_to_do;
@@ -563,24 +563,23 @@ dfa dfa::compact() const {
     std::vector<unsigned> state_to_equivalence_class(_transitions.size(), 0U);
     std::vector<std::vector<unsigned>> equivalence_classes(2, std::vector<unsigned>());
 
-    std::set<std::vector<unsigned>> to_do;
-
     for (unsigned state = 0U; state < _transitions.size(); state++) {
         unsigned index = _accept_states.count(state) != 0 ? 0U : 1U;
         equivalence_classes[index].push_back(state);
         state_to_equivalence_class[state] = index;
     }
 
-    to_do.insert(equivalence_classes[0]);
+    std::stack<unsigned> equivalence_classes_to_do;
+    equivalence_classes_to_do.push(0);
 
     const nfa::transitions& reverse_transitions_map = reverse_transitions(_transitions);
 
-    while (!to_do.empty()) {
-        std::vector<unsigned> equiv_class = *to_do.begin();
-        to_do.erase(equiv_class);
+    while (!equivalence_classes_to_do.empty()) {
+        const unsigned equiv_class = equivalence_classes_to_do.top();
+        equivalence_classes_to_do.pop();
 
         std::vector<nfa::transition> reverse_transitions_from_equiv_class;
-        for (unsigned state : equiv_class) {
+        for (unsigned state : equivalence_classes[equiv_class]) {
             reverse_transitions_from_equiv_class.insert(reverse_transitions_from_equiv_class.end(),
                                                         reverse_transitions_map[state].begin(),
                                                         reverse_transitions_map[state].end());
@@ -589,39 +588,29 @@ dfa dfa::compact() const {
         for (const nfa::transition& reverse_transition : reverse_transitions_from_equiv_class) {
             // Every state in states_with_transitions_to_equiv_class class makes a transition to a state in equiv_class
             const std::vector<unsigned>& states_with_transitions_to_equiv_class = reverse_transition._to_states;
-            for (unsigned state : states_with_transitions_to_equiv_class) {
-                unsigned partition_index = state_to_equivalence_class[state];
-                SASSERT(partition_index < equivalence_classes.size());
-                const std::vector<unsigned>& equiv_class_containing_state = equivalence_classes[partition_index];
+            for (const unsigned state : states_with_transitions_to_equiv_class) {
+                const unsigned equivalence_class = state_to_equivalence_class[state];
+                SASSERT(equivalence_class < equivalence_classes.size());
                 std::vector<unsigned> equiv_class_intersect;
                 std::vector<unsigned> equiv_class_diff;
-                intersect_and_diff(equiv_class_containing_state, states_with_transitions_to_equiv_class, &equiv_class_intersect, &equiv_class_diff);
+                intersect_and_diff(equivalence_classes[equivalence_class],
+                                   states_with_transitions_to_equiv_class,
+                                   &equiv_class_intersect,
+                                   &equiv_class_diff);
                 if (!equiv_class_intersect.empty() && !equiv_class_diff.empty()) {
-                    if (to_do.count(equiv_class_containing_state) != 0) {
-                        to_do.erase(equiv_class_containing_state);
-                        to_do.insert(equiv_class_diff);
-                        to_do.insert(equiv_class_intersect);
-                    } else if (equiv_class_intersect.size() < equiv_class_diff.size()) {
-                        to_do.insert(equiv_class_intersect);
-                    } else {
-                        to_do.insert(equiv_class_diff);
-                    }
-                    unsigned new_partition_index = equivalence_classes.size();
                     if (equiv_class_intersect.size() < equiv_class_diff.size()) {
-                        equivalence_classes[partition_index] = equiv_class_diff;
-                        equivalence_classes.push_back(equiv_class_intersect);
-                        for (unsigned s : equiv_class_intersect) {
-                            SASSERT(state_to_equivalence_class[s] == partition_index);
-                            state_to_equivalence_class[s] = new_partition_index;
-                        }
+                        equivalence_classes[equivalence_class] = std::move(equiv_class_diff);
+                        equivalence_classes.push_back(std::move(equiv_class_intersect));
                     } else {
-                        equivalence_classes[partition_index] = equiv_class_intersect;
-                        equivalence_classes.push_back(equiv_class_diff);
-                        for (unsigned s : equiv_class_diff) {
-                            SASSERT(state_to_equivalence_class[s] == partition_index);
-                            state_to_equivalence_class[s] = new_partition_index;
-                        }
+                        equivalence_classes[equivalence_class] = std::move(equiv_class_intersect);
+                        equivalence_classes.push_back(std::move(equiv_class_diff));
                     }
+                    const unsigned new_equivalence_class = equivalence_classes.size() - 1;
+                    for (const unsigned state : equivalence_classes[new_equivalence_class]) {
+                        SASSERT(state_to_equivalence_class[state] == equivalence_class);
+                        state_to_equivalence_class[state] = new_equivalence_class;
+                    }
+                    equivalence_classes_to_do.push(new_equivalence_class);
                 }
             }
         }
@@ -641,7 +630,11 @@ dfa dfa::compact() const {
             for (const transition& old_transition : _transitions[old_state]) {
                 if (new_transitions.empty() ||
                     new_transitions[new_transitions.size() - 1]._to_states != state_to_equivalence_class[old_transition._to_states]) {
-                    new_transitions.push_back({ state_to_equivalence_class[old_transition._to_states], old_transition._begin_char, old_transition._end_char });
+                    new_transitions.push_back(
+                        { state_to_equivalence_class[old_transition._to_states],
+                          old_transition._begin_char,
+                          old_transition._end_char }
+                    );
                 } else {
                     new_transitions[new_transitions.size() - 1]._end_char = old_transition._end_char;
                 }
@@ -892,7 +885,7 @@ nfa nfa::from_string(const zstring& str) {
     unsigned size = str.length() + 1;
     transitions transitions(size);
     for (unsigned i = 0; i < size - 1; ++i) {
-        transition t = { std::vector<unsigned>(1, i+1), str[i], str[i]+1 };
+        transition t = { std::vector<unsigned>(1, i + 1), str[i], str[i] + 1 };
         transitions[i] = std::vector<transition>(1, t);
     }
     std::set<unsigned> accept_states;

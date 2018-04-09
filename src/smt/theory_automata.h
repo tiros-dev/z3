@@ -17,7 +17,7 @@ Revision History:
 #ifndef THEORY_AUTOMATA_H_
 #define THEORY_AUTOMATA_H_
 
-#include <climits>
+#include <limits>
 #include <set>
 #include <vector>
 #include "ast/seq_decl_plugin.h"
@@ -39,8 +39,8 @@ struct transition_t {
     unsigned _begin_char;
     unsigned _end_char; // Transision on [m_begin_char .. m_end_char - 1]
 
-    static const unsigned max_end_char = UINT_MAX;
-    static const unsigned epsilon_char = UINT_MAX;
+    static const unsigned max_end_char = std::numeric_limits<unsigned>::max();
+    static const unsigned epsilon_char = std::numeric_limits<unsigned>::max();
 
     bool is_epsilon() const {
         return _begin_char == epsilon_char && _end_char == epsilon_char;
