@@ -17,6 +17,7 @@ Revision History:
 #ifndef THEORY_AUTOMATA_H_
 #define THEORY_AUTOMATA_H_
 
+#include <iterator>
 #include <limits>
 #include <set>
 #include <vector>
@@ -64,6 +65,10 @@ enum product_action {
 template<enum product_action product_action>
 class dfa_product_builder;
 
+/*
+ * TransitionTarget must be a container of states. Each state must be of type unsigned.
+ * The container must implement a forward iterator of each state.
+ */
 template<typename TransitionTarget>
 class automaton {
     friend dfa_builder;
@@ -79,11 +84,62 @@ protected:
         _accept_states(accept_states),
         _transitions(transitions) {
     }
+
+public:
+    std::ostream& pp(std::ostream& out) const;
 };
 
 class nfa;
 
-class dfa: public automaton<unsigned> {
+class dfa_target {
+    unsigned _state;
+
+    template<typename T>
+    class iterator_t : public std::iterator<std::forward_iterator_tag, T> {
+        T* _p;
+
+    public:
+        iterator_t() : _p(nullptr) {}
+        iterator_t(T* p) : _p(p) {}
+        iterator_t(const iterator_t& i) : _p(i._p) {}
+
+        iterator_t& operator++() {
+            _p = nullptr;
+            return *this;
+        }
+        iterator_t operator++(int) {
+            T p = _p;
+            _p = nullptr;
+            return p;
+        }
+
+        bool operator==(const iterator_t& other) const { return _p == other._p; }
+        bool operator!=(const iterator_t& other) const { return _p != other._p; }
+        T& operator*() { return *_p; }
+    };
+
+public:
+
+    dfa_target(unsigned s) : _state(s) {}
+
+    unsigned get_state() const { return _state; }
+
+    bool operator<(const dfa_target& other) const { return get_state() < other.get_state(); }
+
+    typedef iterator_t<unsigned> iterator;
+    typedef iterator_t<const unsigned> const_iterator;
+
+    iterator begin() noexcept { return iterator(&_state); }
+    iterator end() noexcept { return iterator(nullptr); }
+
+    const_iterator begin() const noexcept { return const_iterator(&_state); }
+    const_iterator end() const noexcept { return const_iterator(nullptr); }
+
+    const_iterator cbegin() const noexcept { return begin(); }
+    const_iterator cend() const noexcept { return end(); }
+};
+
+class dfa: public automaton<dfa_target> {
     friend dfa_builder;
 
     bool _is_compact;
@@ -91,7 +147,7 @@ class dfa: public automaton<unsigned> {
     template<enum product_action product_action>
     friend class dfa_product_builder;
 public:
-    typedef transition_t<unsigned> transition;
+    typedef transition_t<dfa_target> transition;
     typedef std::vector<std::vector<transition>> transitions;
 
     nfa get_nfa() const;
@@ -111,7 +167,6 @@ public:
 
     dfa();
 
-    std::ostream& pp(std::ostream& out) const;
 private:
 #ifdef Z3DEBUG
     bool check_invariant() const;
@@ -177,8 +232,6 @@ public:
     nfa opt() const;
     nfa plus() const;
     nfa star() const;
-
-    std::ostream& pp(std::ostream& out) const;
 };
 
 } /* namespace automata */

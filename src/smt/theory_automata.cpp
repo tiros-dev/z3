@@ -239,7 +239,7 @@ nfa dfa::get_nfa() const {
         const std::vector<transition>& transitions = _transitions[state];
         std::vector<nfa::transition> new_transitions;
         for (const transition& t : transitions) {
-            new_transitions.push_back({ std::vector<unsigned>(1, t._to_states), t._begin_char, t._end_char });
+            new_transitions.push_back({ std::vector<unsigned>(1, t._to_states.get_state()), t._begin_char, t._end_char });
         }
         nfa_transitions[state] = new_transitions;
     }
@@ -285,7 +285,7 @@ private:
     unsigned garbage_state() {
         if (_garbage_state == std::numeric_limits<unsigned>::max()) {
             _garbage_state = next_dfa_state();
-            _dfa_transitions[_garbage_state] = std::vector<dfa::transition>(1, { _garbage_state, 0, alphabet_size });
+            _dfa_transitions[_garbage_state] = std::vector<dfa::transition>(1, { dfa_target(_garbage_state), 0, alphabet_size });
         }
         return _garbage_state;
     }
@@ -435,10 +435,10 @@ class dfa_product_builder {
             SASSERT(_next_t1 < _transitions_1.size());
             const dfa::transition& t0 = _transitions_0[_next_t0];
             const dfa::transition& t1 = _transitions_1[_next_t1];
-            *s0 = t0._to_states;
-            *s1 = t1._to_states;
+            *s0 = t0._to_states.get_state();
+            *s1 = t1._to_states.get_state();
             unsigned next_char = std::min(t0._end_char, t1._end_char);
-            dfa::transition t = { _builder->get_state(t0._to_states, t1._to_states), _next_char, next_char };
+            dfa::transition t = { _builder->get_state(t0._to_states.get_state(), t1._to_states.get_state()), _next_char, next_char };
             _next_char = next_char;
             if (t1._end_char <= t0._end_char) {
                 _next_t1++;
@@ -476,8 +476,8 @@ public:
                 unsigned target_state_1;
                 const dfa::transition& t = tg.next(&target_state_0, &target_state_1);
                 new_transitions_from_state.push_back(t);
-                if (visited_product_states.count(t._to_states) == 0) {
-                    visited_product_states.insert(t._to_states);
+                if (visited_product_states.count(t._to_states.get_state()) == 0) {
+                    visited_product_states.insert(t._to_states.get_state());
                     states_to_do.push(std::make_pair(target_state_0, target_state_1));
                 }
             }
@@ -513,13 +513,14 @@ dfa dfa::intersect(const dfa& other) const {
 // transition to a third node, thus the reverse transitions are
 // non-deterministic
 static nfa::transitions reverse_transitions(const dfa::transitions& dfa_transitions) {
-    unsigned size = dfa_transitions.size();
+    const unsigned size = dfa_transitions.size();
     nfa::transitions result(size);
     for (unsigned source = 0U; source < size; source++) {
         for (const auto& transition : dfa_transitions[source]) {
-            unsigned target = transition._to_states;
-            std::vector<nfa::transition>* new_transitions = &result[target];
-            new_transitions->push_back({ std::vector<unsigned>(1, source), transition._begin_char, transition._end_char});
+            for (const unsigned target : transition._to_states) {
+                std::vector<nfa::transition>* new_transitions = &result[target];
+                new_transitions->push_back({ std::vector<unsigned>(1, source), transition._begin_char, transition._end_char});
+            }
         }
     }
     return nfa::normalize_transitions_map(result);
@@ -629,9 +630,9 @@ dfa dfa::compact() const {
             std::vector<transition> new_transitions;
             for (const transition& old_transition : _transitions[old_state]) {
                 if (new_transitions.empty() ||
-                    new_transitions[new_transitions.size() - 1]._to_states != state_to_equivalence_class[old_transition._to_states]) {
+                    new_transitions[new_transitions.size() - 1]._to_states.get_state() != state_to_equivalence_class[old_transition._to_states.get_state()]) {
                     new_transitions.push_back(
-                        { state_to_equivalence_class[old_transition._to_states],
+                        { state_to_equivalence_class[old_transition._to_states.get_state()],
                           old_transition._begin_char,
                           old_transition._end_char }
                     );
@@ -650,7 +651,7 @@ dfa dfa::compact() const {
 
 zstring dfa::get_string() const {
     std::stack<std::pair<unsigned, transition>> to_do;
-    std::set<unsigned> visited_states;
+    std::set<dfa_target> visited_states;
 
     if (_accept_states.count(_start_state) != 0) {
         return zstring();
@@ -695,7 +696,7 @@ zstring dfa::get_string() const {
         }
     } prefered_transition_order;
 
-    visited_states.insert(_start_state);
+    visited_states.insert(dfa_target(_start_state));
     std::vector<transition> sorted_transitions(_transitions[_start_state]);
     std::sort(sorted_transitions.begin(), sorted_transitions.end(), prefered_transition_order);
     for (const transition& t : sorted_transitions) {
@@ -722,11 +723,11 @@ zstring dfa::get_string() const {
         }
         index++;
 
-        if (_accept_states.count(t._to_states) != 0) {
+        if (_accept_states.count(t._to_states.get_state()) != 0) {
             return zstring(index, string.data());
         }
 
-        std::vector<transition> sorted_transitions(_transitions[t._to_states]);
+        std::vector<transition> sorted_transitions(_transitions[t._to_states.get_state()]);
         std::sort(sorted_transitions.begin(), sorted_transitions.end(), prefered_transition_order);
         for (const transition& tt : sorted_transitions) {
             to_do.push(std::make_pair(index, tt));
@@ -750,7 +751,7 @@ bool dfa::check_invariant() const {
             SASSERT(t._begin_char == next_char);
             SASSERT(t._end_char <= alphabet_size);
             next_char = t._end_char;
-            SASSERT(t._to_states < number_of_states);
+            SASSERT(t._to_states.get_state() < number_of_states);
         }
         SASSERT(next_char == alphabet_size);
     }
@@ -762,7 +763,7 @@ dfa::dfa(unsigned start_state,
          const std::set<unsigned>& accept_states,
          const transitions& transitions,
          bool is_compact) :
-    automaton<unsigned>(start_state, accept_states, transitions), _is_compact(is_compact) {
+    automaton<dfa_target>(start_state, accept_states, transitions), _is_compact(is_compact) {
     SASSERT(check_invariant());
 }
 
@@ -770,7 +771,7 @@ nfa::nfa() : automaton<std::vector<unsigned>>(empty._start_state, empty._accept_
     SASSERT(check_invariant());
 }
 
-dfa::dfa() : automaton<unsigned>(empty._start_state, empty._accept_states, empty._transitions), _is_compact(empty._is_compact) {
+dfa::dfa() : automaton<dfa_target>(empty._start_state, empty._accept_states, empty._transitions), _is_compact(empty._is_compact) {
     SASSERT(check_invariant());
 }
 
@@ -782,7 +783,8 @@ static std::string pretty(unsigned x) {
     return std::string(sstream.str());
 }
 
-std::ostream& dfa::pp(std::ostream& out) const {
+template<typename T>
+std::ostream& automaton<T>::pp(std::ostream& out) const {
     out << "digraph {" << std::endl;
     std::string indent1(4, ' ');
     std::string indent2(8, ' ');
@@ -800,43 +802,7 @@ std::ostream& dfa::pp(std::ostream& out) const {
     }
     out << indent1 << "}" << std::endl;
     for (unsigned from_state = 0U; from_state < _transitions.size(); from_state++) {
-        for (const transition& t : _transitions[from_state]) {
-            out << indent1 << from_state << " -> {";
-            out << " " << t._to_states;
-            out << " } [label=";
-            if (t.is_epsilon()) {
-                out << "<&epsilon;>";
-            } else if (t._begin_char == t._end_char - 1) {
-                out << '"' << pretty(t._begin_char) << '"';
-            } else {
-                out << '"' << '[' << pretty(t._begin_char) << " - " << pretty(t._end_char - 1) << ']' << '"';
-            }
-            out << "]" << std::endl;
-        }
-    }
-    out << "}" << std::endl;
-    return out;
-}
-
-std::ostream& nfa::pp(std::ostream& out) const {
-    out << "digraph {" << std::endl;
-    std::string indent1(4, ' ');
-    std::string indent2(8, ' ');
-    out << indent1 << "{" << std::endl;
-    for (unsigned state = 0U; state < _transitions.size(); state++) {
-        std::string fill = "";
-        if (state == _start_state) {
-            fill = " style=filled fillcolor=yellow";
-        }
-        std::string shape = " shape=circle";
-        if (0 < _accept_states.count(state)) {
-            shape = " shape=doublecircle";
-        }
-        out << indent2 << state << " [" << fill << shape << " ]" << std::endl;
-    }
-    out << indent1 << "}" << std::endl;
-    for (unsigned from_state = 0U; from_state < _transitions.size(); from_state++) {
-        for (const transition& t : _transitions[from_state]) {
+        for (const transition_t<T>& t : _transitions[from_state]) {
             out << indent1 << from_state << " -> {";
             for (unsigned target : t._to_states) {
                 out << " " << target;
