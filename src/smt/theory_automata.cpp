@@ -775,11 +775,10 @@ dfa::dfa() : automaton<unsigned>(empty._start_state, empty._accept_states, empty
 }
 
 static std::string pretty(unsigned x) {
-    if ('0' <= x && x <= '9') return std::string(1, x);
-    if ('A' <= x && x <= 'Z') return std::string(1, x);
-    if ('a' <= x && x <= 'z') return std::string(1, x);
+    if (('#' <= x && x <= '~') || x == '!') return std::string(1, x);
+    if (x == '"') return std::string("\\\"");
     std::stringstream sstream;
-    sstream << "\\\\x" << std::hex << x;
+    sstream << '\\' << 'x' << std::hex << x;
     return std::string(sstream.str());
 }
 
@@ -808,9 +807,9 @@ std::ostream& dfa::pp(std::ostream& out) const {
             if (t.is_epsilon()) {
                 out << "<&epsilon;>";
             } else if (t._begin_char == t._end_char - 1) {
-                out << pretty(t._begin_char);
+                out << '"' << pretty(t._begin_char) << '"';
             } else {
-                out << "\"[" << pretty(t._begin_char) << " - " << pretty(t._end_char - 1) << "]\"";
+                out << '"' << '[' << pretty(t._begin_char) << " - " << pretty(t._end_char - 1) << ']' << '"';
             }
             out << "]" << std::endl;
         }
@@ -846,9 +845,9 @@ std::ostream& nfa::pp(std::ostream& out) const {
             if (t.is_epsilon()) {
                 out << "<&epsilon;>";
             } else if (t._begin_char == t._end_char - 1) {
-                out << pretty(t._begin_char);
+                out << '"' << pretty(t._begin_char) << '"';
             } else {
-                out << "\"[" << pretty(t._begin_char) << " - " << pretty(t._end_char - 1) << "]\"";
+                out << '"' << '[' << pretty(t._begin_char) << " - " << pretty(t._end_char - 1) << ']' << '"';
             }
             out << "]" << std::endl;
         }
