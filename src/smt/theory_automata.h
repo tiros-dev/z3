@@ -47,6 +47,10 @@ struct transition_t {
         return _begin_char == epsilon_char && _end_char == epsilon_char;
     }
 
+    bool operator==(const transition_t& other) const {
+        return _begin_char == other._begin_char && _end_char == other._end_char && _to_states == other._to_states;
+    }
+
 #ifdef Z3DEBUG
     bool check_invariant() const {
         SASSERT(_begin_char < _end_char || is_epsilon());
@@ -125,6 +129,7 @@ public:
     unsigned get_state() const { return _state; }
 
     bool operator<(const dfa_target& other) const { return get_state() < other.get_state(); }
+    bool operator==(const dfa_target& other) const { return get_state() == other.get_state(); }
 
     typedef iterator_t<unsigned> iterator;
     typedef iterator_t<const unsigned> const_iterator;

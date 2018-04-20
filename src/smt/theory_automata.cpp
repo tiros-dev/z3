@@ -88,6 +88,12 @@ static std::vector<nfa::transition> normalize_transitions(const std::vector<nfa:
         last_queue_pop = current;
 #endif // def Z3DEBUG
         queue.pop();
+
+        // Remove duplicate elements in the queue. This is techinically not needed, but it makes it easier to reason about progress
+        while (!queue.empty() && queue.top() == current) {
+            queue.pop();
+        }
+
         // We are going to consider the last segment in result and the current segment
         // We want last and current to not overlap
         if (last->_begin_char == current._begin_char) {
@@ -560,6 +566,14 @@ dfa dfa::compact() const {
     if (_transitions.size() < 2) {
         return dfa(_start_state, _accept_states, _transitions, true /* is_compact */);
     }
+    if (_accept_states.size() == 0 || _accept_states.size() == _transitions.size()) {
+        transition t = { 0, 0, alphabet_size };
+        std::set<unsigned> accept_states;
+        if (_accept_states.size() == _transitions.size()) {
+            accept_states.insert(0);
+        }
+        return dfa(0, accept_states, std::vector<std::vector<transition>>(1, std::vector<transition>(1, t)), true /* is_compact */);
+    }
 
     std::vector<unsigned> state_to_equivalence_class(_transitions.size(), 0U);
     std::vector<std::vector<unsigned>> equivalence_classes(2, std::vector<unsigned>());
@@ -779,7 +793,7 @@ static std::string pretty(unsigned x) {
     if (('#' <= x && x <= '~') || x == '!') return std::string(1, x);
     if (x == '"') return std::string("\\\"");
     std::stringstream sstream;
-    sstream << '\\' << 'x' << std::hex << x;
+    sstream << "\\\\x" << std::hex << x;
     return std::string(sstream.str());
 }
 
@@ -1086,7 +1100,7 @@ enode* theory_automata::ensure_enode(expr* e) {
     context& ctx = get_context();
     if (!ctx.e_internalized(e)) {
         ctx.internalize(e, false);
-    }    
+    }
     return ctx.get_enode(e);
 }
 
