@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# For help customizing this script, read:
+# http://tiny/a6md3511/Third-Party_custom-build
+
+# Fail when commands exit unsuccesfully.
+set -o errexit
+
+# Fail when using an undefined variable.
+set -o nounset
+
+# Fail if commands fail as part of a pipeline.
+set -o pipefail
+
+echo "Discovering build and source directory..."
+ROOT_DIR="$(findup Config)"
+BUILD_DIR="$ROOT_DIR/build"
+INSTALL_DIR="$BUILD_DIR/private/install"
+WRITABLE_ROOT="$BUILD_DIR/private"
+
+MAX_JOBS=16
+
+# Add a 'clean' target for convenience.
+if [[ $# > 0 ]]; then
+  if [[ "$1" == "clean" ]]; then
+    echo "Cleaning build output..."
+    rm -rf "$BUILD_DIR"/*
+    exit 0
+  fi
+fi
+
+echo "Getting configuration values from Brazil using cflags..."
+eval "$(cflags -format sh)"
+
+echo "Getting dependency information from Brazil using brazil-path..."
+LIBFARM="$(brazil-path build.libfarm)"
+export CFLAGS="$CFLAGS -I$LIBFARM/include"
+export CXXFLAGS="$CXXFLAGS -I$LIBFARM/include"
+# Statically link tool chain dependent libraries libstdc++, libgcc, and
+# libgomp, as the tool chain might not be present in production
+export LDFLAGS="$LDFLAGS -static-libstdc++ -static-libgcc -Wl,-Bstatic -lgomp -Wl,-Bdynamic -L$LIBFARM/lib"
+# This lets us find *-config scripts in packages that don't use standard
+# pkg-config instead.
+export PATH="$LIBFARM/bin:$PATH"
+
+export CC=$(which $(cflags CC))
+export CXX=$(which $(cflags CXX))
+
+echo "CXX=$CXX"
+echo "CC=$CC"
+
+echo "Copying source code into writable location..."
+mkdir -p "$WRITABLE_ROOT"
+cp "$ROOT_DIR/LICENSE.txt" "$WRITABLE_ROOT"
+cp -rufp "$ROOT_DIR/examples/." "$WRITABLE_ROOT/examples"
+cp -rufp "$ROOT_DIR/scripts/." "$WRITABLE_ROOT/scripts"
+cp -rufp "$ROOT_DIR/src/." "$WRITABLE_ROOT/src"
+
+echo "Running third-party build..."
+mkdir -p "$INSTALL_DIR"
+cd "$WRITABLE_ROOT"
+
+python scripts/mk_make.py --staticlib --noomp
+cd build
+make -j $MAX_JOBS
+
+BIN_DIR="$INSTALL_DIR/bin"
+mkdir -p "$BIN_DIR"
+cp -rf "$WRITABLE_ROOT/build/z3" "$BIN_DIR"
+strip "$BIN_DIR/z3"
+
+echo "Copying install artifacts to Brazil locations..."
+cp -rf "$INSTALL_DIR"/* "$BUILD_DIR"
