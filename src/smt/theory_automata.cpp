@@ -1275,10 +1275,13 @@ automata::nfa theory_automata::get_nfa(expr* e) {
         m_util.str.is_string(e, s);
         aut = automata::nfa::from_string(s);
     } else if (m_util.re.is_to_re(e, e0)) {
-        SASSERT(m_util.str.is_string(e0));
-        zstring s;
-        m_util.str.is_string(e0, s);
-        aut = automata::nfa::from_string(s);
+        if (m_util.str.is_string(e0)) {
+          zstring s;
+          m_util.str.is_string(e0, s);
+          aut = automata::nfa::from_string(s);
+        } else {
+          m.raise_exception("RE from non string constant not supported");
+        }
     } else if (m_util.re.is_concat(e, e0, e1)) {
         aut = get_nfa(e0).append(get_nfa(e1));
     } else if (m_util.re.is_union(e, e0, e1)) {
