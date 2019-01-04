@@ -53,7 +53,7 @@ expr_pattern_match::match_quantifier(quantifier* qf, app_ref_vector& patterns, u
     m_regs[0] = qf->get_expr();
     for (unsigned i = 0; i < m_precompiled.size(); ++i) {
         quantifier* qf2 = m_precompiled[i].get();
-        if (qf2->is_forall() != qf->is_forall()) {
+        if (qf2->get_kind() != qf->get_kind() || is_lambda(qf)) {
             continue;
         }
         if (qf2->get_num_decls() != qf->get_num_decls()) {
@@ -393,10 +393,8 @@ expr_pattern_match::initialize(char const * spec_string) {
     VERIFY(parse_smt2_commands(ctx, is));
     ctx.set_print_success(ps);
 
-    ptr_vector<expr>::const_iterator it  = ctx.begin_assertions();
-    ptr_vector<expr>::const_iterator end = ctx.end_assertions();
-    for (; it != end; ++it) {
-        compile(*it);
+    for (expr * e : ctx.assertions()) {
+        compile(e);
     }
     TRACE("expr_pattern_match", display(tout); );
 }

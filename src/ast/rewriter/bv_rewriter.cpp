@@ -779,10 +779,11 @@ br_status bv_rewriter::mk_extract(unsigned high, unsigned low, expr * arg, expr_
         }
     }
 
-    if (m().is_ite(arg)) {
-        result = m().mk_ite(to_app(arg)->get_arg(0),
-                            m_mk_extract(high, low, to_app(arg)->get_arg(1)),
-                            m_mk_extract(high, low, to_app(arg)->get_arg(2)));
+    expr* c = nullptr, *t = nullptr, *e = nullptr;
+    if (m().is_ite(arg, c, t, e) &&
+        (t->get_ref_count() == 1 || !m().is_ite(t)) && 
+        (e->get_ref_count() == 1 || !m().is_ite(e))) {
+        result = m().mk_ite(c, m_mk_extract(high, low, t), m_mk_extract(high, low, e));
         return BR_REWRITE2;
     }
 
@@ -1383,7 +1384,7 @@ br_status bv_rewriter::mk_bv2int(expr * arg, expr_ref & result) {
             --i;
             tmp = args[i].get();
             tmp = m_autil.mk_mul(m_autil.mk_numeral(power(numeral(2), sz), true), tmp);
-            args[i] = tmp;
+            args[i] = std::move(tmp);
             sz += get_bv_size(to_app(arg)->get_arg(i));
         }
         result = m_autil.mk_add(args.size(), args.c_ptr());
@@ -2400,8 +2401,8 @@ bool bv_rewriter::isolate_term(expr* lhs, expr* rhs, expr_ref& result) {
         return false;
     }
     unsigned sz = to_app(rhs)->get_num_args();
-    expr_ref t1(m()), t2(m());
-    t1 = to_app(rhs)->get_arg(0);
+    expr * t1 = to_app(rhs)->get_arg(0);
+    expr_ref t2(m());
     if (sz > 2) {
         t2 = m().mk_app(get_fid(), OP_BADD, sz-1, to_app(rhs)->get_args()+1);
     }
@@ -2597,14 +2598,10 @@ br_status bv_rewriter::mk_eq_core(expr * lhs, expr * rhs, expr_ref & result) {
                 result = m().mk_bool_val(new_lhs == new_rhs);
                 return BR_DONE;
             }
-        }
-        else {
-            new_lhs = lhs;
-            new_rhs = rhs;
+            lhs = new_lhs;
+            rhs = new_rhs;
         }
 
-        lhs = new_lhs;
-        rhs = new_rhs;
         // Try to rewrite t1 + t2 = c --> t1 = c - t2
         // Reason: it is much cheaper to bit-blast.
         if (isolate_term(lhs, rhs, result)) {
@@ -2683,7 +2680,7 @@ br_status bv_rewriter::mk_ite_core(expr * c, expr * t, expr * e, expr_ref & resu
             }
 
             const unsigned sz = m_util.get_bv_size(rhs);
-            if (sz == 1) { // detect (lhs = N) ? C : D, where N, C, D are 1 bit numberals
+            if (sz == 1) { // detect (lhs = N) ? C : D, where N, C, D are 1 bit numerals
                 numeral rhs_n, e_n, t_n;
                 unsigned rhs_sz, e_sz, t_sz;
                 if (is_numeral(rhs, rhs_n, rhs_sz)

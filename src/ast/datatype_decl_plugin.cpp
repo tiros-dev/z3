@@ -231,7 +231,7 @@ namespace datatype {
                 }
                 return s;
             }
-            catch (invalid_datatype) {
+            catch (const invalid_datatype &) {
                 m_manager->raise_exception("invalid datatype");
                 return nullptr;
             }
@@ -682,7 +682,7 @@ namespace datatype {
 
     /**
        \brief Return true if the inductive datatype is well-founded.
-       Pre-condition: The given argument constains the parameters of an inductive datatype.
+       Pre-condition: The given argument constrains the parameters of an inductive datatype.
     */
     bool util::is_well_founded(unsigned num_types, sort* const* sorts) {
         buffer<bool> well_founded(num_types, false);
@@ -692,6 +692,7 @@ namespace datatype {
         }
         unsigned num_well_founded = 0, id = 0;
         bool changed;
+        ptr_vector<sort> subsorts;
         do {
             changed = false;
             for (unsigned tid = 0; tid < num_types; tid++) {
@@ -701,23 +702,25 @@ namespace datatype {
                 sort* s = sorts[tid];
                 def const& d = get_def(s);
                 for (constructor const* c : d) {
-                    bool found_nonwf = false;
                     for (accessor const* a : *c) {
-                        if (sort2id.find(a->range(), id) && !well_founded[id]) {
-                            found_nonwf = true;
-                            break;
+                        subsorts.reset();
+                        get_subsorts(a->range(), subsorts);
+                        for (sort* srt : subsorts) {
+                            if (sort2id.find(srt, id) && !well_founded[id]) {
+                                goto next_constructor;
+                            }
                         }
                     }
-                    if (!found_nonwf) {
-                        changed = true;
-                        well_founded[tid] = true;
-                        num_well_founded++;
-                        break;
-                    }
+                    changed = true;
+                    well_founded[tid] = true;
+                    num_well_founded++;
+                    break;
+                next_constructor:
+                    ;
                 }
             }
         } 
-        while(changed && num_well_founded < num_types);
+        while (changed && num_well_founded < num_types);
         return num_well_founded == num_types;
     }
 
@@ -727,8 +730,7 @@ namespace datatype {
 
     void util::get_subsorts(sort* s, ptr_vector<sort>& sorts) const {
         sorts.push_back(s);
-        for (unsigned i = 0; i < s->get_num_parameters(); ++i) {
-            parameter const& p = s->get_parameter(i);
+        for (parameter const& p : s->parameters()) {
             if (p.is_ast() && is_sort(p.get_ast())) {
                 get_subsorts(to_sort(p.get_ast()), sorts);
             }
